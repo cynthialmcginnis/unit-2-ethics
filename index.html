@@ -738,17 +738,60 @@ $("#eraseBtn").onclick = () => {
   for (const k in mem) delete mem[k]; location.reload();
 };
 $("#dlBtn").onclick = () => {
-  const L = ["Tower Rescue: Certificate of rescue", "", "Team: " + (sget("f:team", "") || "(not entered)"), "Site: " + (sget("f:site", "") || "(not entered)"),
-    "Reached the roof: " + new Date(G.tEnd).toLocaleString(), "Playing time: " + fmt(G.tEnd - G.t0), "Rescue time lost: " + minutes() + " minutes   Setbacks: " + G.setbacks.length, "Who Pays score: " + score().named + " of " + score().total, "", "THE RESCUE"];
-  rescueLines().forEach(l => L.push("- " + l));
-  L.push("", "HOW OUR AI CHOICES PLAYED OUT IN THE TOWER");
-  G.echoes.forEach(e => L.push("- " + e.at + (e.at === "Floor " + e.from ? "" : " (because of floor " + e.from + ")") + ": " + e.t));
-  L.push("", "OUR CLIMB");
-  G.log.forEach(l => L.push(l.where + " | " + l.title + " | " + l.act + " | Lens: " + l.lens + " | We chose this because " + l.why + " | We said who pays: " + (l.who || "") + " | Who really pays: " + (l.pay || "") + " (" + (l.match === true ? "Named" : l.match === false ? "Missed" : "not answered") + ") | " + l.res));
-  L.push("", "DEBRIEF");
-  $$("#sEnd textarea").forEach(t => L.push($("label[for='" + t.id + "']").textContent, t.value.trim() || "(no answer)", ""));
-  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([L.join("\r\n")], { type: "text/plain" }));
-  a.download = "tower-rescue-certificate.txt"; document.body.appendChild(a); a.click(); a.remove();
+  /* Draws the certificate as a PNG image students upload to the dropbox. */
+  const team = sget("f:team", "") || "(team names not entered)", site = sget("f:site", "");
+  const st = minutes() <= 30 ? 3 : minutes() <= 60 ? 2 : 1, sc = score();
+  const Wd = 1600, M = 90, TW = Wd - 2 * M;
+  const c = document.createElement("canvas"), x = c.getContext("2d");
+  const SERIF = "Georgia, 'Times New Roman', serif", SANS = "Helvetica, Arial, sans-serif";
+  let shot = null;
+  try { const v = $("#endView canvas") || $("#view canvas"); if (v && v.width) { shot = document.createElement("canvas"); shot.width = v.width; shot.height = v.height; shot.getContext("2d").drawImage(v, 0, 0); } } catch (e) { shot = null; }
+  function wrap(t, font, maxW) { x.font = font; const out = []; String(t).split(/\n/).forEach(par => { let line = ""; par.split(/\s+/).forEach(w => { const tr = line ? line + " " + w : w; if (x.measureText(tr).width > maxW && line) { out.push(line); line = w; } else line = tr; }); out.push(line); }); return out; }
+  const ops = [];
+  let y = 0;
+  function text(t, font, color, lh, gapAfter, indent) { const ls = wrap(t, font, TW - (indent || 0)); ls.forEach(l => { ops.push({ k: "t", t: l, font, color, x: M + (indent || 0), y: y + lh * 0.78 }); y += lh; }); y += gapAfter || 0; }
+  function rule(gap) { ops.push({ k: "r", y: y + gap / 2 }); y += gap; }
+  y = 120;
+  text("AI LAB SPRINT · TOWER RESCUE", "bold 26px " + SANS, "#c2401f", 34, 6);
+  text("Certificate of Rescue", "bold 64px " + SERIF, "#1d1b18", 76, 18);
+  text("Team: " + team + (site ? "    ·    Site: " + site : ""), "bold 30px " + SANS, "#1d1b18", 40, 10);
+  text("Reached the roof: " + new Date(G.tEnd).toLocaleString() + "    ·    Playing time: " + fmt(G.tEnd - G.t0), "26px " + SANS, "#1d1b18", 36, 4);
+  text("Rescue time lost: " + minutes() + " minutes    ·    Setbacks: " + G.setbacks.length + "    ·    Everyone on the roof rescued: yes", "26px " + SANS, "#1d1b18", 36, 10);
+  text("★".repeat(st) + "☆".repeat(3 - st) + "      Who Pays score: " + sc.named + " of " + sc.total, "bold 40px " + SANS, "#c2401f", 52, 4);
+  text("Stars show rescue time lost (speed, not ethics). The Who Pays score counts decisions where the team named who really pays before the game showed it.", "italic 22px " + SANS, "#555", 30, 16);
+  if (shot) { const iw = TW, ih = Math.round(iw * shot.height / shot.width * 0.85) || 500, h = Math.min(ih, 620); ops.push({ k: "i", y, h }); y += h + 24; }
+  rule(30);
+  text("The rescue", "bold 32px " + SERIF, "#1d1b18", 42, 6);
+  rescueLines().forEach(l => text("• " + l, "24px " + SANS, "#1d1b18", 32, 2, 10));
+  if (G.echoes.length) { y += 14; text("How our AI choices played out in the tower", "bold 32px " + SERIF, "#1d1b18", 42, 6);
+    G.echoes.forEach(e => text("• " + e.at + (e.at === "Floor " + e.from ? "" : " (because of floor " + e.from + ")") + ": " + e.t, "24px " + SANS, "#1d1b18", 32, 2, 10)); }
+  rule(30);
+  text("Our climb", "bold 32px " + SERIF, "#1d1b18", 42, 8);
+  G.log.forEach(l => {
+    text(l.where + " · " + l.title, "bold 25px " + SANS, "#1d1b18", 34, 2);
+    text("Action: " + l.act + "   Lens: " + l.lens, "23px " + SANS, "#1d1b18", 31, 0, 20);
+    text("We chose this because " + l.why, "23px " + SANS, "#1d1b18", 31, 0, 20);
+    if (l.who || l.pay) text("We said who pays: " + (l.who || "") + "   Who really pays: " + (l.pay || "") + (l.match === true ? "   (Named)" : l.match === false ? "   (Missed)" : ""), "23px " + SANS, l.match === false ? "#b3261e" : "#1e7a46", 31, 0, 20);
+    text("Result: " + l.res, "italic 23px " + SANS, "#555", 31, 12, 20);
+  });
+  rule(30);
+  text("Debrief", "bold 32px " + SERIF, "#1d1b18", 42, 8);
+  $$("#sEnd textarea").forEach(t => { const lab = $("label[for='" + t.id + "']"); text(lab ? lab.textContent : "", "bold 24px " + SANS, "#1d1b18", 32, 2); text(t.value.trim() || "(no answer)", "24px " + SANS, "#1d1b18", 32, 14, 20); });
+  y += 10;
+  text("Every team member uploads a copy of this certificate to the AI Lab Sprint dropbox.", "bold 24px " + SANS, "#c2401f", 32, 0);
+  text("Certificate made " + new Date().toLocaleString(), "20px " + SANS, "#777", 28, 0);
+  const Ht = y + 110;
+  c.width = Wd; c.height = Ht;
+  x.fillStyle = "#ffffff"; x.fillRect(0, 0, Wd, Ht);
+  x.strokeStyle = "#1d1b18"; x.lineWidth = 6; x.strokeRect(30, 30, Wd - 60, Ht - 60); x.lineWidth = 2; x.strokeRect(44, 44, Wd - 88, Ht - 88);
+  ops.forEach(o => {
+    if (o.k === "t") { x.font = o.font; x.fillStyle = o.color; x.textBaseline = "alphabetic"; x.fillText(o.t, o.x, o.y); }
+    else if (o.k === "r") { x.strokeStyle = "#ccc"; x.lineWidth = 2; x.beginPath(); x.moveTo(M, o.y); x.lineTo(Wd - M, o.y); x.stroke(); }
+    else if (o.k === "i") { const r = shot.width / shot.height; let w = o.h * r, h = o.h; if (w > TW) { w = TW; h = w / r; } x.fillStyle = "#070a12"; x.fillRect(M, o.y, TW, o.h); x.drawImage(shot, M + (TW - w) / 2, o.y + (o.h - h) / 2, w, h); }
+  });
+  const name = "tower-rescue-certificate-" + (sget("f:team", "") || "team").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) + ".png";
+  c.toBlob(bl => { if (!bl) { alert("Your browser could not make the image. Use Print or save as PDF instead."); return; }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(bl); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }, "image/png");
 };
 
 /* ============================================================
@@ -762,7 +805,7 @@ window.Tower = (function () {
   let avatar, firePts, smokePts, fireLight, roofPeople = [], chutes = [], labels = [];
   function make() {
     host = $("#view");
-    try { if (typeof THREE === "undefined") throw 0; R = new THREE.WebGLRenderer({ antialias: true }); }
+    try { if (typeof THREE === "undefined") throw 0; R = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); }
     catch (e) { const d = document.createElement("div"); d.id = "fallback"; d.innerHTML = "<p>The 3D tower is not available in this browser. The game still works. Your floor and the fire level are shown above.</p>"; host.appendChild(d); return; }
     ok = true; R.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); host.insertBefore(R.domElement, host.firstChild);
     scene = new THREE.Scene(); scene.background = new THREE.Color(0x070a12); scene.fog = new THREE.Fog(0x070a12, 30, 70);
